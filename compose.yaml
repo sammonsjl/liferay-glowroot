@@ -1,0 +1,59 @@
+services:
+  liferay:
+    build: liferay
+    environment:
+      GLOWROOT_ENABLED: true
+      LIFERAY_JPDA_ENABLED: true # Enable debugging for Tomcat
+      LIFERAY_DATABASE_NAME: lportal
+      LIFERAY_DATABASE_USER: root
+      LIFERAY_DATABASE_PASSWORD:
+    ports:
+      - 127.0.0.1:8080:8080
+      # - 127.0.0.1:8000:8000 # Expose port for debugging
+    volumes:
+      - liferay-data:/opt/liferay/data
+      - ./liferay/data:/docker-entrypoint-initlr.d
+    depends_on:
+      database:
+        condition: service_healthy
+  database:
+    image: mysql:5.7
+    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8 --collation-server=utf8_general_ci --log_warnings=1 --innodb_buffer_pool_size=2GB --innodb_log_file_size=1G --skip-log-bin --innodb_flush_log_at_trx_commit=0
+      --innodb_io_capacity=700 --innodb_io_capacity_max=1500 --max_allowed_packet=1G --innodb_doublewrite=0
+    environment:
+      MYSQL_DATABASE: lportal
+      MYSQL_ALLOW_EMPTY_PASSWORD: 1
+    ports:
+      # - 127.0.0.1:3306:3306
+      - 127.0.0.1:3306:3306 # Use port 3307 instead of 3306, if a local MySQL instance is already running
+    volumes:
+      - database-data:/var/lib/mysql
+    ulimits:
+      nproc: 65535
+      nofile:
+        soft: 20000
+        hard: 40000
+    healthcheck:
+      test: mysql -h localhost -uroot -p$$MYSQL_ROOT_PASSWORD --protocol tcp -e 'select 1' 2>&1 | grep -qvF "Can't connect"
+      interval: 5s
+      retries: 10
+      start_period: 5s
+  collector:
+    image: glowroot/glowroot-central:0.14.1-beta.3
+    ports:
+      - "8181:8181/tcp"
+      - "4000:4000/tcp"
+    environment:
+      CASSANDRA_CONTACT_POINTS: cassandra
+  cassandra:
+    image: cassandra:4.1.1
+    ports:
+      - "7000:7000/tcp"
+      - "9160:9160/tcp"
+      - "9042:9042/tcp"
+    volumes:
+      - cassandra_data:/var/lib/cassandra
+volumes:
+  cassandra_data:
+  liferay-data:
+  database-data:
